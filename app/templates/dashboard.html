@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSP CEO Dashboard</title>
+    <meta http-equiv="refresh" content="300">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; }
+        a { color: #3b82f6; text-decoration: none; }
+
+        /* Nav */
+        .nav { background: #1e293b; padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; }
+        .nav-brand { font-size: 14px; font-weight: 700; color: #f8fafc; }
+        .nav-brand span { color: #3b82f6; }
+        .nav-right { display: flex; gap: 16px; align-items: center; font-size: 13px; color: #94a3b8; }
+        .nav-right a { font-size: 13px; }
+        .btn-sm { padding: 6px 12px; background: #334155; border-radius: 6px; color: #e2e8f0; font-size: 12px; cursor: pointer; border: none; }
+        .btn-sm:hover { background: #475569; }
+
+        /* Layout */
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px 32px; }
+
+        /* Cards */
+        .grid { display: grid; gap: 20px; }
+        .grid-3 { grid-template-columns: repeat(3, 1fr); }
+        .grid-4 { grid-template-columns: repeat(4, 1fr); }
+        .grid-2 { grid-template-columns: repeat(2, 1fr); }
+        .card { background: #1e293b; border-radius: 12px; padding: 24px; border: 1px solid #334155; }
+        .card h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; margin-bottom: 12px; }
+        .card .big-number { font-size: 36px; font-weight: 800; color: #f8fafc; }
+        .card .sub { font-size: 13px; color: #64748b; margin-top: 4px; }
+
+        /* Section headers */
+        .section-header { font-size: 18px; font-weight: 700; color: #f8fafc; margin: 32px 0 16px; padding-bottom: 8px; border-bottom: 1px solid #334155; }
+
+        /* RAG badges */
+        .rag { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+        .rag-green { background: #22c55e; }
+        .rag-amber { background: #f59e0b; }
+        .rag-red { background: #ef4444; }
+
+        /* Tables */
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; padding: 10px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; border-bottom: 1px solid #334155; }
+        td { padding: 12px; font-size: 14px; border-bottom: 1px solid #1e293b; }
+        tr:hover { background: rgba(255,255,255,0.02); }
+
+        /* Progress bar */
+        .progress-bar { height: 8px; background: #334155; border-radius: 4px; overflow: hidden; margin-top: 8px; }
+        .progress-fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
+        .fill-green { background: #22c55e; }
+        .fill-amber { background: #f59e0b; }
+        .fill-red { background: #ef4444; }
+        .fill-blue { background: #3b82f6; }
+
+        /* Pipeline funnel */
+        .pipeline-stage { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+        .stage-name { width: 200px; font-size: 13px; color: #94a3b8; }
+        .stage-bar { flex: 1; height: 28px; background: #334155; border-radius: 4px; position: relative; overflow: hidden; }
+        .stage-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 8px; font-size: 12px; font-weight: 600; color: white; }
+        .stage-count { width: 40px; text-align: right; font-size: 14px; font-weight: 700; color: #f8fafc; }
+
+        /* Metric card */
+        .metric { text-align: center; }
+        .metric .value { font-size: 28px; font-weight: 800; }
+        .metric .label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; margin-top: 4px; }
+        .metric .benchmark { font-size: 11px; color: #475569; margin-top: 2px; }
+        .text-green { color: #22c55e; }
+        .text-amber { color: #f59e0b; }
+        .text-red { color: #ef4444; }
+        .text-blue { color: #3b82f6; }
+
+        /* Alert box */
+        .alert { padding: 16px 20px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; line-height: 1.5; }
+        .alert-red { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: #fca5a5; }
+        .alert-amber { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); color: #fcd34d; }
+        .alert-blue { background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.2); color: #93c5fd; }
+
+        @media (max-width: 768px) {
+            .grid-3, .grid-4 { grid-template-columns: 1fr; }
+            .grid-2 { grid-template-columns: 1fr; }
+            .container { padding: 16px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <div class="nav-brand">Clinic Success Partners <span>CEO Dashboard</span></div>
+        <div class="nav-right">
+            <span>Last refresh: {{ refreshes[0].created_at[:16] if refreshes else 'Never' }}</span>
+            <a href="/refresh" class="btn-sm">Refresh Now</a>
+            <a href="/logout" class="btn-sm">Logout</a>
+        </div>
+    </div>
+
+    <div class="container">
+
+        <!-- GROWTH TRACKER -->
+        <div class="section-header">Growth Tracker -- $200K by September 2026</div>
+        <div class="grid grid-4">
+            <div class="card metric">
+                <div class="value text-blue">{{ growth.current_clients }}</div>
+                <div class="label">Active Clients</div>
+                <div class="benchmark">Target: {{ growth.target_clients }}</div>
+                <div class="progress-bar">
+                    {% set pct = (growth.current_clients / growth.target_clients * 100) | int %}
+                    <div class="progress-fill fill-blue" style="width: {{ pct }}%"></div>
+                </div>
+            </div>
+            <div class="card metric">
+                <div class="value {{ 'text-red' if growth.gap > 40 else 'text-amber' if growth.gap > 20 else 'text-green' }}">{{ growth.gap }}</div>
+                <div class="label">Clients to Add</div>
+                <div class="benchmark">{{ growth.months_remaining }} months left</div>
+            </div>
+            <div class="card metric">
+                <div class="value text-amber">{{ growth.new_per_month }}/mo</div>
+                <div class="label">New Clients Needed</div>
+                <div class="benchmark">inc. {{ growth.monthly_churn_count }} churn replacement</div>
+            </div>
+            <div class="card metric">
+                <div class="value text-blue">{{ growth.booked_calls_needed }}</div>
+                <div class="label">Calls/Month Needed</div>
+                <div class="benchmark">{{ growth.qualified_shows_needed }} qualified shows at 25% close</div>
+            </div>
+        </div>
+
+        <!-- PIPELINE HEALTH -->
+        <div class="section-header">Pipeline Health (GHL)</div>
+        {% if pipeline_summary %}
+        <div class="grid grid-2">
+            {% for name, data in pipeline_summary.items() %}
+            <div class="card">
+                <h3>{{ name }}</h3>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
+                    <div><span style="font-size: 24px; font-weight: 800; color: #f8fafc;">{{ data.total_opps }}</span> <span style="color: #64748b; font-size: 13px;">opportunities</span></div>
+                    <div><span style="font-size: 24px; font-weight: 800; color: #22c55e;">${{ "{:,.0f}".format(data.total_value) }}</span> <span style="color: #64748b; font-size: 13px;">pipeline value</span></div>
+                </div>
+                {% set max_count = data.stages | map(attribute='opportunity_count') | max if data.stages else 1 %}
+                {% for stage in data.stages %}
+                <div class="pipeline-stage">
+                    <div class="stage-name">{{ stage.stage_name }}</div>
+                    <div class="stage-bar">
+                        {% set width = (stage.opportunity_count / max_count * 100) | int if max_count > 0 else 0 %}
+                        <div class="stage-fill fill-blue" style="width: {{ width }}%">
+                            {% if stage.opportunity_count > 0 %}{{ stage.opportunity_count }}{% endif %}
+                        </div>
+                    </div>
+                    <div class="stage-count">{{ stage.opportunity_count }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-amber">No pipeline data yet. Data will appear after first successful GHL pull. Click "Refresh Now" to trigger.</div>
+        {% endif %}
+
+        <!-- COLD EMAIL -->
+        <div class="section-header">Cold Email (Instantly)</div>
+        {% if email_data %}
+        <div class="grid grid-4">
+            <div class="card metric">
+                <div class="value text-blue">{{ "{:,}".format(email_totals.total_sent) }}</div>
+                <div class="label">Emails Sent</div>
+                <div class="benchmark">{{ email_totals.campaigns }} campaigns</div>
+            </div>
+            <div class="card metric">
+                <div class="value {{ 'text-green' if email_totals.open_rate >= 40 else 'text-amber' if email_totals.open_rate >= 30 else 'text-red' }}">{{ "%.1f" | format(email_totals.open_rate) }}%</div>
+                <div class="label">Open Rate</div>
+                <div class="benchmark">Target: 40-60%</div>
+            </div>
+            <div class="card metric">
+                <div class="value {{ 'text-green' if email_totals.reply_rate >= 3 else 'text-amber' if email_totals.reply_rate >= 2 else 'text-red' }}">{{ "%.1f" | format(email_totals.reply_rate) }}%</div>
+                <div class="label">Reply Rate</div>
+                <div class="benchmark">Target: 3-8%</div>
+            </div>
+            <div class="card metric">
+                <div class="value {{ 'text-green' if email_totals.bounce_rate < 3 else 'text-red' }}">{{ "%.1f" | format(email_totals.bounce_rate) }}%</div>
+                <div class="label">Bounce Rate</div>
+                <div class="benchmark">Target: <3%</div>
+            </div>
+        </div>
+        {% else %}
+        <div class="alert alert-amber">No cold email data yet. Configure INSTANTLY_API_KEY in environment variables.</div>
+        {% endif %}
+
+        <!-- CLIENT STATUS -->
+        <div class="section-header">Client Status</div>
+        {% if clients %}
+        <div class="card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Client</th>
+                        <th>Status</th>
+                        <th>Constraint</th>
+                        <th>CPL</th>
+                        <th>Show Rate</th>
+                        <th>Close Rate</th>
+                        <th>ROAS</th>
+                        <th>Last Updated</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in clients %}
+                    <tr>
+                        <td><span class="rag rag-{{ c.rag }}"></span>{{ c.client_name }}</td>
+                        <td>
+                            {% if c.rag == 'green' %}<span class="text-green">Healthy</span>
+                            {% elif c.rag == 'amber' %}<span class="text-amber">Warning</span>
+                            {% else %}<span class="text-red">At Risk</span>{% endif %}
+                        </td>
+                        <td style="font-size: 12px; color: #94a3b8;">{{ c.constraint_pillar }}</td>
+                        <td>{{ "$%.0f" | format(c.cpl) if c.cpl else '--' }}</td>
+                        <td>{{ "%.0f%%" | format(c.show_rate * 100) if c.show_rate else '--' }}</td>
+                        <td>{{ "%.0f%%" | format(c.close_rate * 100) if c.close_rate else '--' }}</td>
+                        <td>{{ "%.1fx" | format(c.roas) if c.roas else '--' }}</td>
+                        <td style="font-size: 12px; color: #475569;">{{ c.last_updated[:10] if c.last_updated else '--' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-blue">No client data yet. Client metrics can be added manually or will populate when GHL client sub-accounts are connected.</div>
+        {% endif %}
+
+        <!-- BENCHMARKS REFERENCE -->
+        <div class="section-header">Cameron's Benchmarks</div>
+        <div class="grid grid-2">
+            <div class="card">
+                <h3>B2B (Your Acquisition)</h3>
+                <table>
+                    <thead><tr><th>Metric</th><th>Target</th><th>Red Flag</th></tr></thead>
+                    <tbody>
+                        {% for key, val in b2b_benchmarks.items() %}
+                        <tr>
+                            <td>{{ key.replace('_', ' ').title() }}</td>
+                            <td class="text-green">{{ val.target }}</td>
+                            <td class="text-red">{{ val.red_flag }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="card">
+                <h3>B2C (Client Fulfillment)</h3>
+                <table>
+                    <thead><tr><th>Metric</th><th>Target</th><th>Red Flag</th></tr></thead>
+                    <tbody>
+                        {% for key, val in b2c_benchmarks.items() %}
+                        <tr>
+                            <td>{{ key.replace('_', ' ').title() }}</td>
+                            <td class="text-green">{{ val.target }}</td>
+                            <td class="text-red">{{ val.red_flag }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- DATA STATUS -->
+        <div class="section-header">Data Sources</div>
+        <div class="card">
+            <table>
+                <thead><tr><th>Source</th><th>Status</th><th>Last Message</th><th>Time</th></tr></thead>
+                <tbody>
+                    {% for r in refreshes %}
+                    <tr>
+                        <td>{{ r.source }}</td>
+                        <td>
+                            {% if r.status == 'success' %}<span class="text-green">Connected</span>
+                            {% elif r.status == 'error' %}<span class="text-red">Error</span>
+                            {% else %}<span class="text-amber">{{ r.status }}</span>{% endif %}
+                        </td>
+                        <td style="font-size: 12px; color: #94a3b8;">{{ r.message[:80] }}</td>
+                        <td style="font-size: 12px; color: #475569;">{{ r.created_at[:16] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div style="text-align: center; padding: 32px; color: #334155; font-size: 12px;">
+            CSP CEO Dashboard -- Private & Confidential -- Auto-refreshes every 5 minutes
+        </div>
+    </div>
+</body>
+</html>
