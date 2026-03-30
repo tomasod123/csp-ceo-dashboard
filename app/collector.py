@@ -12,15 +12,10 @@ LOCATIONS = {
     "CSP_UK": {
         "token": os.environ.get("GHL_TOKEN_CSP_UK", ""),
         "location_id": os.environ.get("GHL_LOCATION_CSP_UK", ""),
-        "pipelines": {
-            "Sales Pipeline (1-Call)": os.environ.get("GHL_B2B_PIPELINE_1CALL", ""),
-            "Sales Pipeline (L&S)": os.environ.get("GHL_B2B_PIPELINE_LS", ""),
-        }
     },
     "CSP_LEGACY": {
         "token": os.environ.get("GHL_TOKEN_CSP_LEGACY", ""),
         "location_id": os.environ.get("GHL_LOCATION_CSP_LEGACY", ""),
-        "pipelines": {}  # Will be populated dynamically
     }
 }
 
@@ -28,7 +23,6 @@ LOCATIONS = {
 async def collect_ghl():
     """Pull pipeline data from GHL."""
     today = date.today().isoformat()
-    conn = get_db()
 
     for loc_name, loc_config in LOCATIONS.items():
         token = loc_config["token"]
@@ -45,7 +39,6 @@ async def collect_ghl():
 
         try:
             async with httpx.AsyncClient(timeout=30) as client:
-                # Get pipelines
                 resp = await client.get(
                     f"{GHL_BASE}/opportunities/pipelines",
                     params={"locationId": location_id},
@@ -54,11 +47,11 @@ async def collect_ghl():
                 resp.raise_for_status()
                 pipelines = resp.json().get("pipelines", [])
 
+                # Collect all data first, then write to DB in one go
+                rows = []
                 for pipeline in pipelines:
                     pipeline_name = pipeline["name"]
-                    stages = pipeline.get("stages", [])
 
-                    # Get opportunities for this pipeline
                     opp_resp = await client.get(
                         f"{GHL_BASE}/opportunities/search",
                         params={
@@ -73,7 +66,6 @@ async def collect_ghl():
                     if opp_resp.status_code == 200:
                         opportunities = opp_resp.json().get("opportunities", [])
 
-                    # Count opportunities per stage
                     stage_counts = {}
                     stage_values = {}
                     for opp in opportunities:
@@ -81,24 +73,30 @@ async def collect_ghl():
                         stage_counts[stage_id] = stage_counts.get(stage_id, 0) + 1
                         stage_values[stage_id] = stage_values.get(stage_id, 0) + (opp.get("monetaryValue", 0) or 0)
 
-                    for i, stage in enumerate(stages):
+                    for i, stage in enumerate(pipeline.get("stages", [])):
                         count = stage_counts.get(stage["id"], 0)
                         value = stage_values.get(stage["id"], 0)
+                        rows.append((loc_name, pipeline_name, stage["name"], i, count, value, today))
+
+                # Write all rows in a single transaction
+                conn = get_db()
+                try:
+                    for row in rows:
                         conn.execute(
                             """INSERT INTO pipeline_snapshot
                                (location, pipeline_name, stage_name, stage_order,
                                 opportunity_count, total_value, snapshot_date)
                                VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                            (loc_name, pipeline_name, stage["name"], i, count, value, today)
+                            row
                         )
+                    conn.commit()
+                finally:
+                    conn.close()
 
-                log_refresh("GHL", "success", f"{loc_name}: {len(pipelines)} pipelines pulled")
+                log_refresh("GHL", "success", f"{loc_name}: {len(pipelines)} pipelines, {len(rows)} stages pulled")
 
         except Exception as e:
             log_refresh("GHL", "error", f"{loc_name}: {str(e)[:200]}")
-
-    conn.commit()
-    conn.close()
 
 
 async def collect_instantly():
@@ -109,7 +107,6 @@ async def collect_instantly():
         return
 
     today = date.today().isoformat()
-    conn = get_db()
     headers = {"Authorization": f"Bearer {api_key}"}
 
     try:
@@ -122,12 +119,12 @@ async def collect_instantly():
             resp.raise_for_status()
             campaigns = resp.json().get("items", resp.json() if isinstance(resp.json(), list) else [])
 
+            rows = []
             for campaign in campaigns:
                 cid = campaign.get("id", "")
                 name = campaign.get("name", "Unknown")
                 status = campaign.get("status", "unknown")
 
-                # Get analytics
                 analytics_resp = await client.get(
                     f"{INSTANTLY_BASE}/campaigns/{cid}/analytics",
                     headers=headers,
@@ -145,23 +142,28 @@ async def collect_instantly():
                 reply_rate = (replied / sent * 100) if sent > 0 else 0
                 bounce_rate = (bounced / sent * 100) if sent > 0 else 0
 
-                conn.execute(
-                    """INSERT INTO email_snapshot
-                       (campaign_name, campaign_id, status, total_sent, total_opened,
-                        total_replied, total_bounced, open_rate, reply_rate, bounce_rate,
-                        snapshot_date)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (name, cid, status, sent, opened, replied, bounced,
-                     open_rate, reply_rate, bounce_rate, today)
-                )
+                rows.append((name, cid, status, sent, opened, replied, bounced,
+                             open_rate, reply_rate, bounce_rate, today))
+
+            conn = get_db()
+            try:
+                for row in rows:
+                    conn.execute(
+                        """INSERT INTO email_snapshot
+                           (campaign_name, campaign_id, status, total_sent, total_opened,
+                            total_replied, total_bounced, open_rate, reply_rate, bounce_rate,
+                            snapshot_date)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        row
+                    )
+                conn.commit()
+            finally:
+                conn.close()
 
             log_refresh("Instantly", "success", f"{len(campaigns)} campaigns pulled")
 
     except Exception as e:
         log_refresh("Instantly", "error", str(e)[:200])
-
-    conn.commit()
-    conn.close()
 
 
 async def collect_all():
