@@ -166,5 +166,11 @@ async def collect_instantly():
 
 async def collect_all():
     """Run all collectors."""
-    await collect_ghl()
-    await collect_instantly()
+    try:
+        await collect_ghl()
+    except Exception as e:
+        print(f"GHL collection error: {e}")
+    try:
+        await collect_instantly()
+    except Exception as e:
+        print(f"Instantly collection error: {e}")

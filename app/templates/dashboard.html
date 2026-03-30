@@ -88,7 +88,10 @@
 </head>
 <body>
     <div class="nav">
-        <div class="nav-brand">Clinic Success Partners <span>CEO Dashboard</span></div>
+        <div class="nav-brand" style="display: flex; align-items: center; gap: 12px;">
+            <img src="/static/logo.webp" alt="CSP" style="height: 28px;">
+            <span>CEO Dashboard</span>
+        </div>
         <div class="nav-right">
             <span>Last refresh: {{ refreshes[0].created_at[:16] if refreshes else 'Never' }}</span>
             <a href="/refresh" class="btn-sm">Refresh Now</a>
