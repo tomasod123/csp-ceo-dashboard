@@ -1,12 +1,16 @@
-"""Data collector -- pulls from GHL, Instantly, ClickUp into SQLite."""
+"""Data collector -- pulls from Stripe, GHL, Instantly, ClickUp into SQLite."""
 
 import os
 import httpx
-from datetime import datetime, date
-from app.models import get_db, log_refresh
+from datetime import datetime, date, timedelta
+from app.models import (
+    get_db, log_refresh, save_revenue, save_team_activity, upsert_client
+)
 
 GHL_BASE = "https://services.leadconnectorhq.com"
 INSTANTLY_BASE = "https://api.instantly.ai/api/v2"
+CLICKUP_BASE = "https://api.clickup.com/api/v2"
+STRIPE_BASE = "https://api.stripe.com/v1"
 
 LOCATIONS = {
     "CSP_UK": {
@@ -19,6 +23,96 @@ LOCATIONS = {
     }
 }
 
+
+# ──────────────────────────────────────────────
+# STRIPE
+# ──────────────────────────────────────────────
+
+async def collect_stripe():
+    """Pull revenue data from Stripe."""
+    api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+    if not api_key:
+        log_refresh("Stripe", "skipped", "No STRIPE_SECRET_KEY configured")
+        return
+
+    import time
+    now = datetime.utcnow()
+    this_month_start = now.replace(day=1, hour=0, minute=0, second=0)
+    last_month_start = (this_month_start - timedelta(days=1)).replace(day=1)
+
+    ts_this = int(this_month_start.timestamp())
+    ts_last = int(last_month_start.timestamp())
+    ts_now = int(time.time())
+
+    auth = (api_key, "")
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            # Paginate all charges this month
+            this_charges = await _stripe_paginate_charges(client, auth, ts_this, ts_now)
+            last_charges = await _stripe_paginate_charges(client, auth, ts_last, ts_this)
+
+            # Calculate
+            this_total = sum(c["amount"] for c in this_charges if c.get("paid") and not c.get("refunded")) / 100
+            last_total = sum(c["amount"] for c in last_charges if c.get("paid") and not c.get("refunded")) / 100
+
+            this_clients = set(c.get("billing_details", {}).get("name", "Unknown")
+                               for c in this_charges if c.get("paid") and not c.get("refunded")
+                               and c.get("billing_details", {}).get("name"))
+            last_clients = set(c.get("billing_details", {}).get("name", "Unknown")
+                               for c in last_charges if c.get("paid") and not c.get("refunded")
+                               and c.get("billing_details", {}).get("name"))
+
+            new_clients = this_clients - last_clients
+            churned = last_clients - this_clients
+
+            this_month_str = now.strftime("%Y-%m")
+            last_month_str = last_month_start.strftime("%Y-%m")
+
+            save_revenue(
+                this_month_str, this_total, len(this_clients),
+                len(new_clients), len(churned),
+                sorted(this_clients), sorted(new_clients), sorted(churned)
+            )
+            save_revenue(
+                last_month_str, last_total, len(last_clients),
+                0, 0, sorted(last_clients), [], []
+            )
+
+            log_refresh("Stripe", "success",
+                        f"${this_total:,.0f} this month, {len(this_clients)} clients, "
+                        f"{len(new_clients)} new, {len(churned)} churned")
+
+    except Exception as e:
+        log_refresh("Stripe", "error", str(e)[:200])
+
+
+async def _stripe_paginate_charges(client, auth, created_gte, created_lt):
+    """Paginate through Stripe charges API."""
+    all_charges = []
+    starting_after = None
+
+    while True:
+        params = {"limit": 100, "created[gte]": created_gte, "created[lt]": created_lt}
+        if starting_after:
+            params["starting_after"] = starting_after
+
+        resp = await client.get(f"{STRIPE_BASE}/charges", params=params, auth=auth)
+        resp.raise_for_status()
+        data = resp.json()
+        charges = data.get("data", [])
+        all_charges.extend(charges)
+
+        if not data.get("has_more") or not charges:
+            break
+        starting_after = charges[-1]["id"]
+
+    return all_charges
+
+
+# ──────────────────────────────────────────────
+# GHL
+# ──────────────────────────────────────────────
 
 async def collect_ghl():
     """Pull pipeline data from GHL."""
@@ -47,11 +141,9 @@ async def collect_ghl():
                 resp.raise_for_status()
                 pipelines = resp.json().get("pipelines", [])
 
-                # Collect all data first, then write to DB in one go
                 rows = []
                 for pipeline in pipelines:
                     pipeline_name = pipeline["name"]
-
                     opp_resp = await client.get(
                         f"{GHL_BASE}/opportunities/search",
                         params={
@@ -78,7 +170,6 @@ async def collect_ghl():
                         value = stage_values.get(stage["id"], 0)
                         rows.append((loc_name, pipeline_name, stage["name"], i, count, value, today))
 
-                # Write all rows in a single transaction
                 conn = get_db()
                 try:
                     for row in rows:
@@ -86,18 +177,21 @@ async def collect_ghl():
                             """INSERT INTO pipeline_snapshot
                                (location, pipeline_name, stage_name, stage_order,
                                 opportunity_count, total_value, snapshot_date)
-                               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                            row
-                        )
+                               VALUES (?, ?, ?, ?, ?, ?, ?)""", row)
                     conn.commit()
                 finally:
                     conn.close()
 
-                log_refresh("GHL", "success", f"{loc_name}: {len(pipelines)} pipelines, {len(rows)} stages pulled")
+                log_refresh("GHL", "success",
+                            f"{loc_name}: {len(pipelines)} pipelines, {len(rows)} stages")
 
         except Exception as e:
             log_refresh("GHL", "error", f"{loc_name}: {str(e)[:200]}")
 
+
+# ──────────────────────────────────────────────
+# INSTANTLY
+# ──────────────────────────────────────────────
 
 async def collect_instantly():
     """Pull campaign analytics from Instantly."""
@@ -117,7 +211,8 @@ async def collect_instantly():
                 params={"limit": 50},
             )
             resp.raise_for_status()
-            campaigns = resp.json().get("items", resp.json() if isinstance(resp.json(), list) else [])
+            raw = resp.json()
+            campaigns = raw.get("items", raw if isinstance(raw, list) else [])
 
             rows = []
             for campaign in campaigns:
@@ -153,26 +248,149 @@ async def collect_instantly():
                            (campaign_name, campaign_id, status, total_sent, total_opened,
                             total_replied, total_bounced, open_rate, reply_rate, bounce_rate,
                             snapshot_date)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                        row
-                    )
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", row)
                 conn.commit()
             finally:
                 conn.close()
 
-            log_refresh("Instantly", "success", f"{len(campaigns)} campaigns pulled")
+            total_sent = sum(r[3] for r in rows)
+            total_replied = sum(r[5] for r in rows)
+            log_refresh("Instantly", "success",
+                        f"{len(campaigns)} campaigns, {total_sent:,} sent, {total_replied} replies")
 
     except Exception as e:
         log_refresh("Instantly", "error", str(e)[:200])
 
 
+# ──────────────────────────────────────────────
+# CLICKUP
+# ──────────────────────────────────────────────
+
+async def collect_clickup():
+    """Pull client status and team activity from ClickUp."""
+    api_key = os.environ.get("CLICKUP_API_KEY", "")
+    if not api_key:
+        log_refresh("ClickUp", "skipped", "No CLICKUP_API_KEY configured")
+        return
+
+    workspace_id = os.environ.get("CLICKUP_WORKSPACE_ID", "20595659")
+    board_id = os.environ.get("CLICKUP_CLIENT_BOARD_ID", "901800417604")
+    headers = {"Authorization": api_key}
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            # Pull client board tasks
+            resp = await client.get(
+                f"{CLICKUP_BASE}/list/{board_id}/task",
+                headers=headers,
+                params={"include_closed": "true", "subtasks": "true"},
+            )
+
+            client_count = 0
+            if resp.status_code == 200:
+                tasks = resp.json().get("tasks", [])
+                for task in tasks:
+                    name = task.get("name", "")
+                    status = task.get("status", {}).get("status", "").lower()
+
+                    # Map ClickUp status to RAG
+                    rag = "amber"
+                    if any(g in status for g in ["green", "active", "healthy", "good"]):
+                        rag = "green"
+                    elif any(r in status for r in ["red", "at risk", "critical", "churn"]):
+                        rag = "red"
+                    elif any(a in status for a in ["amber", "warning", "watch", "review"]):
+                        rag = "amber"
+
+                    if name:
+                        upsert_client(name, rag_status=rag, source="clickup")
+                        client_count += 1
+
+            # Pull team activity - completed tasks this week
+            seven_days_ago = int((datetime.utcnow() - timedelta(days=7)).timestamp() * 1000)
+            team_resp = await client.get(
+                f"{CLICKUP_BASE}/team/{workspace_id}/task",
+                headers=headers,
+                params={
+                    "date_updated_gt": str(seven_days_ago),
+                    "statuses[]": ["complete", "closed"],
+                    "include_closed": "true",
+                },
+            )
+
+            members_data = {}
+            if team_resp.status_code == 200:
+                tasks = team_resp.json().get("tasks", [])
+                for task in tasks:
+                    for assignee in task.get("assignees", []):
+                        name = assignee.get("username", assignee.get("email", "Unknown"))
+                        if name not in members_data:
+                            members_data[name] = {
+                                "member_name": name,
+                                "tasks_completed_week": 0,
+                                "tasks_overdue": 0,
+                                "tasks_in_progress": 0,
+                                "last_activity": "",
+                            }
+                        members_data[name]["tasks_completed_week"] += 1
+
+            # Pull overdue tasks
+            overdue_resp = await client.get(
+                f"{CLICKUP_BASE}/team/{workspace_id}/task",
+                headers=headers,
+                params={
+                    "due_date_lt": str(int(datetime.utcnow().timestamp() * 1000)),
+                    "statuses[]": ["open", "in progress", "to do"],
+                },
+            )
+
+            if overdue_resp.status_code == 200:
+                tasks = overdue_resp.json().get("tasks", [])
+                for task in tasks:
+                    for assignee in task.get("assignees", []):
+                        name = assignee.get("username", assignee.get("email", "Unknown"))
+                        if name not in members_data:
+                            members_data[name] = {
+                                "member_name": name,
+                                "tasks_completed_week": 0,
+                                "tasks_overdue": 0,
+                                "tasks_in_progress": 0,
+                                "last_activity": "",
+                            }
+                        members_data[name]["tasks_overdue"] += 1
+
+            if members_data:
+                save_team_activity(list(members_data.values()))
+
+            log_refresh("ClickUp", "success",
+                        f"{client_count} clients, {len(members_data)} team members tracked")
+
+    except Exception as e:
+        log_refresh("ClickUp", "error", str(e)[:200])
+
+
+# ──────────────────────────────────────────────
+# ORCHESTRATOR
+# ──────────────────────────────────────────────
+
 async def collect_all():
-    """Run all collectors."""
+    """Run all collectors in order."""
+    collectors = [
+        ("Stripe", collect_stripe),
+        ("GHL", collect_ghl),
+        ("Instantly", collect_instantly),
+        ("ClickUp", collect_clickup),
+    ]
+
+    for name, fn in collectors:
+        try:
+            await fn()
+        except Exception as e:
+            print(f"{name} collection error: {e}")
+
+    # Generate CEO brief after all data is collected
     try:
-        await collect_ghl()
+        from app.brief import generate_brief
+        await generate_brief()
     except Exception as e:
-        print(f"GHL collection error: {e}")
-    try:
-        await collect_instantly()
-    except Exception as e:
-        print(f"Instantly collection error: {e}")
+        print(f"Brief generation error: {e}")

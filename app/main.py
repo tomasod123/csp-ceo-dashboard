@@ -1,7 +1,7 @@
 """CSP CEO Dashboard -- Private, password-protected business intelligence."""
 
 import os
-import asyncio
+import json
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 
@@ -13,8 +13,12 @@ from itsdangerous import URLSafeTimedSerializer
 from dotenv import load_dotenv
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.models import init_db, get_latest_pipeline, get_latest_email, get_clients, get_growth_data, get_last_refresh
-from app.cameron import classify_rag, identify_constraint, growth_math, B2B_BENCHMARKS, B2C_BENCHMARKS
+from app.models import (
+    init_db, get_latest_pipeline, get_latest_email, get_clients,
+    get_last_refresh, get_revenue, get_latest_brief, get_team_activity,
+    get_source_status
+)
+from app.cameron import classify_rag, identify_constraint, growth_math, COLOR_FUNCTIONS
 from app.collector import collect_all
 
 load_dotenv()
@@ -31,12 +35,10 @@ scheduler = AsyncIOScheduler()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    # Run initial data collection
     try:
         await collect_all()
     except Exception as e:
         print(f"Initial collection error: {e}")
-    # Schedule data refresh every 30 minutes
     scheduler.add_job(collect_all, "interval", minutes=30, id="data_refresh")
     scheduler.start()
     yield
@@ -46,6 +48,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="CSP CEO Dashboard", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
+
+# Register Cameron threshold colors as Jinja2 globals
+for name, fn in COLOR_FUNCTIONS.items():
+    templates.env.globals[name] = fn
+
+# Also register json.loads for template use
+templates.env.globals["json_loads"] = json.loads
 
 
 def verify_session(request: Request) -> bool:
@@ -86,15 +95,20 @@ async def dashboard(request: Request):
     if not verify_session(request):
         return RedirectResponse(url="/login")
 
-    # Get data
+    # Revenue
+    revenue_data = get_revenue(2)
+    this_month = revenue_data[0] if revenue_data else {}
+    last_month = revenue_data[1] if len(revenue_data) > 1 else {}
+
+    this_cash = this_month.get("cash_collected", 0)
+    last_cash = last_month.get("cash_collected", 0)
+    mom_pct = ((this_cash - last_cash) / last_cash * 100) if last_cash > 0 else 0
+
+    # Pipeline
     pipeline_uk = get_latest_pipeline("CSP_UK")
     pipeline_legacy = get_latest_pipeline("CSP_LEGACY")
-    email_data = get_latest_email()
-    clients = get_clients()
-    growth = get_growth_data()
-    refreshes = get_last_refresh()
 
-    # Calculate pipeline totals
+    # Build pipeline summary (only pipelines with data)
     pipeline_summary = {}
     for p in pipeline_uk + pipeline_legacy:
         name = p["pipeline_name"]
@@ -104,44 +118,85 @@ async def dashboard(request: Request):
         pipeline_summary[name]["total_opps"] += p["opportunity_count"]
         pipeline_summary[name]["total_value"] += p["total_value"]
 
-    # Email totals
-    email_totals = {
-        "total_sent": sum(e["total_sent"] for e in email_data),
-        "total_opened": sum(e["total_opened"] for e in email_data),
-        "total_replied": sum(e["total_replied"] for e in email_data),
-        "total_bounced": sum(e["total_bounced"] for e in email_data),
-        "campaigns": len(email_data),
-    }
-    if email_totals["total_sent"] > 0:
-        email_totals["open_rate"] = email_totals["total_opened"] / email_totals["total_sent"] * 100
-        email_totals["reply_rate"] = email_totals["total_replied"] / email_totals["total_sent"] * 100
-        email_totals["bounce_rate"] = email_totals["total_bounced"] / email_totals["total_sent"] * 100
-    else:
-        email_totals["open_rate"] = email_totals["reply_rate"] = email_totals["bounce_rate"] = 0
+    # Filter to pipelines with actual data
+    active_pipelines = {k: v for k, v in pipeline_summary.items() if v["total_opps"] > 0}
 
-    # Growth math
-    current_clients = len(clients) if clients else 10
-    months_left = max(1, (datetime(2026, 9, 30) - datetime.now()).days // 30)
-    gm = growth_math(current_clients, months_remaining=months_left)
+    # Total pipeline stats
+    total_pipeline_opps = sum(v["total_opps"] for v in pipeline_summary.values())
+    total_pipeline_value = sum(v["total_value"] for v in pipeline_summary.values())
 
-    # Cameron analysis for each client
+    # Email
+    email_data = get_latest_email()
+    email_totals = {"total_sent": 0, "total_opened": 0, "total_replied": 0,
+                    "total_bounced": 0, "campaigns": 0,
+                    "open_rate": 0, "reply_rate": 0, "bounce_rate": 0}
+    if email_data:
+        email_totals["total_sent"] = sum(e["total_sent"] for e in email_data)
+        email_totals["total_opened"] = sum(e["total_opened"] for e in email_data)
+        email_totals["total_replied"] = sum(e["total_replied"] for e in email_data)
+        email_totals["total_bounced"] = sum(e["total_bounced"] for e in email_data)
+        email_totals["campaigns"] = len(email_data)
+        if email_totals["total_sent"] > 0:
+            email_totals["open_rate"] = email_totals["total_opened"] / email_totals["total_sent"] * 100
+            email_totals["reply_rate"] = email_totals["total_replied"] / email_totals["total_sent"] * 100
+            email_totals["bounce_rate"] = email_totals["total_bounced"] / email_totals["total_sent"] * 100
+
+    # Clients with Cameron analysis
+    clients = get_clients()
+    rag_counts = {"green": 0, "amber": 0, "red": 0}
     for c in clients:
-        c["rag"] = classify_rag(c)
+        c["rag"] = c.get("rag_status", classify_rag(c))
         pillar, detail = identify_constraint(c)
         c["constraint_pillar"] = pillar
         c["constraint_detail"] = detail
+        rag_counts[c["rag"]] = rag_counts.get(c["rag"], 0) + 1
+
+    # Team
+    team = get_team_activity()
+
+    # Brief
+    brief = get_latest_brief()
+
+    # Data sources
+    sources = get_source_status()
+    refreshes = get_last_refresh()
+
+    # Growth math
+    active_clients = this_month.get("active_clients", len(clients)) or len(clients) or 10
+    months_left = max(1, (datetime(2026, 9, 30) - datetime.now()).days // 30)
+    growth = growth_math(active_clients, months_remaining=months_left)
+
+    # Acquisition cost
+    # If we have Stripe revenue and know ad spend, calculate CPA
+    new_clients_count = this_month.get("new_clients", 0)
 
     return templates.TemplateResponse(request=request, name="dashboard.html", context={
-        "pipeline_summary": pipeline_summary,
-        "pipeline_uk": pipeline_uk,
-        "pipeline_legacy": pipeline_legacy,
+        # Revenue
+        "this_cash": this_cash,
+        "last_cash": last_cash,
+        "mom_pct": mom_pct,
+        "this_month": this_month,
+        "last_month": last_month,
+        # Pipeline
+        "active_pipelines": active_pipelines,
+        "total_pipeline_opps": total_pipeline_opps,
+        "total_pipeline_value": total_pipeline_value,
+        # Email
         "email_data": email_data,
         "email_totals": email_totals,
+        # Clients
         "clients": clients,
-        "growth": gm,
+        "rag_counts": rag_counts,
+        # Team
+        "team": team,
+        # Brief
+        "brief": brief,
+        # Sources
+        "sources": sources,
         "refreshes": refreshes,
-        "b2b_benchmarks": B2B_BENCHMARKS,
-        "b2c_benchmarks": B2C_BENCHMARKS,
+        # Growth
+        "growth": growth,
+        # Meta
         "now": datetime.now(),
     })
 

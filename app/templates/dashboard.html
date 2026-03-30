@@ -5,194 +5,321 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CSP CEO Dashboard</title>
     <meta http-equiv="refresh" content="300">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Inter', -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; }
         a { color: #3b82f6; text-decoration: none; }
 
         /* Nav */
-        .nav { background: #1e293b; padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; }
-        .nav-brand { font-size: 14px; font-weight: 700; color: #f8fafc; }
-        .nav-brand span { color: #3b82f6; }
-        .nav-right { display: flex; gap: 16px; align-items: center; font-size: 13px; color: #94a3b8; }
-        .nav-right a { font-size: 13px; }
-        .btn-sm { padding: 6px 12px; background: #334155; border-radius: 6px; color: #e2e8f0; font-size: 12px; cursor: pointer; border: none; }
+        .nav { background: #1e293b; padding: 12px 32px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; }
+        .nav-brand { display: flex; align-items: center; gap: 12px; }
+        .nav-brand img { height: 28px; }
+        .nav-brand span { font-size: 14px; font-weight: 600; color: #3b82f6; }
+        .nav-right { display: flex; gap: 12px; align-items: center; font-size: 12px; color: #64748b; }
+        .btn-sm { padding: 6px 12px; background: #334155; border-radius: 6px; color: #e2e8f0; font-size: 12px; cursor: pointer; border: none; text-decoration: none; }
         .btn-sm:hover { background: #475569; }
 
         /* Layout */
-        .container { max-width: 1400px; margin: 0 auto; padding: 24px 32px; }
-
-        /* Cards */
-        .grid { display: grid; gap: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px 32px; }
+        .grid { display: grid; gap: 16px; }
+        .grid-2 { grid-template-columns: repeat(2, 1fr); }
         .grid-3 { grid-template-columns: repeat(3, 1fr); }
         .grid-4 { grid-template-columns: repeat(4, 1fr); }
-        .grid-2 { grid-template-columns: repeat(2, 1fr); }
-        .card { background: #1e293b; border-radius: 12px; padding: 24px; border: 1px solid #334155; }
-        .card h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; margin-bottom: 12px; }
-        .card .big-number { font-size: 36px; font-weight: 800; color: #f8fafc; }
-        .card .sub { font-size: 13px; color: #64748b; margin-top: 4px; }
+        .grid-5 { grid-template-columns: repeat(5, 1fr); }
 
-        /* Section headers */
-        .section-header { font-size: 18px; font-weight: 700; color: #f8fafc; margin: 32px 0 16px; padding-bottom: 8px; border-bottom: 1px solid #334155; }
+        /* Cards */
+        .card { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; }
+        .card-brief { background: linear-gradient(135deg, #1e293b 0%, #1a2744 100%); border: 1px solid #2d4a7a; }
+        .section-header { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; color: #64748b; margin: 28px 0 12px; }
+        .section-header:first-of-type { margin-top: 0; }
 
-        /* RAG badges */
-        .rag { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
-        .rag-green { background: #22c55e; }
-        .rag-amber { background: #f59e0b; }
-        .rag-red { background: #ef4444; }
-
-        /* Tables */
-        table { width: 100%; border-collapse: collapse; }
-        th { text-align: left; padding: 10px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; border-bottom: 1px solid #334155; }
-        td { padding: 12px; font-size: 14px; border-bottom: 1px solid #1e293b; }
-        tr:hover { background: rgba(255,255,255,0.02); }
-
-        /* Progress bar */
-        .progress-bar { height: 8px; background: #334155; border-radius: 4px; overflow: hidden; margin-top: 8px; }
-        .progress-fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
-        .fill-green { background: #22c55e; }
-        .fill-amber { background: #f59e0b; }
-        .fill-red { background: #ef4444; }
-        .fill-blue { background: #3b82f6; }
-
-        /* Pipeline funnel */
-        .pipeline-stage { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
-        .stage-name { width: 200px; font-size: 13px; color: #94a3b8; }
-        .stage-bar { flex: 1; height: 28px; background: #334155; border-radius: 4px; position: relative; overflow: hidden; }
-        .stage-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 8px; font-size: 12px; font-weight: 600; color: white; }
-        .stage-count { width: 40px; text-align: right; font-size: 14px; font-weight: 700; color: #f8fafc; }
-
-        /* Metric card */
-        .metric { text-align: center; }
-        .metric .value { font-size: 28px; font-weight: 800; }
+        /* Metric cards */
+        .metric { text-align: center; padding: 16px; }
+        .metric .value { font-size: 28px; font-weight: 800; line-height: 1.2; }
         .metric .label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; margin-top: 4px; }
-        .metric .benchmark { font-size: 11px; color: #475569; margin-top: 2px; }
+        .metric .target { font-size: 10px; color: #475569; margin-top: 2px; }
+        .metric .sub { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+
+        /* Colors */
         .text-green { color: #22c55e; }
         .text-amber { color: #f59e0b; }
         .text-red { color: #ef4444; }
         .text-blue { color: #3b82f6; }
+        .text-gray { color: #64748b; }
 
-        /* Alert box */
-        .alert { padding: 16px 20px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; line-height: 1.5; }
-        .alert-red { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: #fca5a5; }
-        .alert-amber { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); color: #fcd34d; }
-        .alert-blue { background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.2); color: #93c5fd; }
+        /* RAG badges */
+        .rag { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+        .rag-green { background: #22c55e; }
+        .rag-amber { background: #f59e0b; }
+        .rag-red { background: #ef4444; }
 
-        @media (max-width: 768px) {
-            .grid-3, .grid-4 { grid-template-columns: 1fr; }
-            .grid-2 { grid-template-columns: 1fr; }
-            .container { padding: 16px; }
+        /* RAG summary pills */
+        .rag-pills { display: flex; gap: 12px; margin-bottom: 12px; }
+        .rag-pill { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .rag-pill-green { background: rgba(34,197,94,0.15); color: #22c55e; }
+        .rag-pill-amber { background: rgba(245,158,11,0.15); color: #f59e0b; }
+        .rag-pill-red { background: rgba(239,68,68,0.15); color: #ef4444; }
+
+        /* Tables */
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; padding: 8px 12px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #475569; border-bottom: 1px solid #334155; }
+        td { padding: 10px 12px; font-size: 13px; border-bottom: 1px solid rgba(51,65,85,0.5); }
+        tr:hover { background: rgba(255,255,255,0.02); }
+
+        /* Brief */
+        .brief-text { font-size: 15px; line-height: 1.6; color: #cbd5e1; margin-bottom: 16px; }
+        .priorities { list-style: none; padding: 0; }
+        .priorities li { padding: 8px 12px; margin-bottom: 6px; background: rgba(59,130,246,0.08); border-radius: 8px; border-left: 3px solid #3b82f6; font-size: 13px; color: #e2e8f0; }
+        .priorities li.red-flag { border-left-color: #ef4444; background: rgba(239,68,68,0.08); }
+
+        /* Pipeline funnel */
+        .pipeline-stage { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+        .stage-name { width: 180px; font-size: 12px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .stage-bar { flex: 1; height: 24px; background: #334155; border-radius: 4px; overflow: hidden; }
+        .stage-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 8px; font-size: 11px; font-weight: 600; color: white; min-width: fit-content; }
+        .stage-count { width: 30px; text-align: right; font-size: 13px; font-weight: 700; color: #f8fafc; }
+
+        /* Source pills */
+        .source-strip { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .source-pill { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #1e293b; border: 1px solid #334155; }
+        .source-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .dot-green { background: #22c55e; }
+        .dot-red { background: #ef4444; }
+        .dot-gray { background: #64748b; }
+
+        /* Placeholder */
+        .placeholder { padding: 16px; border: 1px dashed #334155; border-radius: 8px; text-align: center; color: #475569; font-size: 12px; }
+
+        /* Progress bar */
+        .progress-bar { height: 6px; background: #334155; border-radius: 3px; overflow: hidden; margin-top: 6px; }
+        .progress-fill { height: 100%; border-radius: 3px; }
+
+        @media (max-width: 900px) {
+            .grid-2, .grid-3, .grid-4, .grid-5 { grid-template-columns: 1fr 1fr; }
+            .container { padding: 12px; }
+        }
+        @media (max-width: 600px) {
+            .grid-2, .grid-3, .grid-4, .grid-5 { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
     <div class="nav">
-        <div class="nav-brand" style="display: flex; align-items: center; gap: 12px;">
-            <img src="/static/logo.webp" alt="CSP" style="height: 28px;">
+        <div class="nav-brand">
+            <img src="/static/logo.webp" alt="CSP">
             <span>CEO Dashboard</span>
         </div>
         <div class="nav-right">
-            <span>Last refresh: {{ refreshes[0].created_at[:16] if refreshes else 'Never' }}</span>
-            <a href="/refresh" class="btn-sm">Refresh Now</a>
+            <span>{{ now.strftime('%B %d, %Y %H:%M') }}</span>
+            <a href="/refresh" class="btn-sm">Refresh</a>
             <a href="/logout" class="btn-sm">Logout</a>
         </div>
     </div>
 
     <div class="container">
 
-        <!-- GROWTH TRACKER -->
-        <div class="section-header">Growth Tracker -- $200K by September 2026</div>
-        <div class="grid grid-4">
+        <!-- ═══════════════════════════════════════ -->
+        <!-- AI CEO BRIEF -->
+        <!-- ═══════════════════════════════════════ -->
+        <div class="section-header">CEO Brief</div>
+        <div class="card card-brief">
+            {% if brief %}
+            <div class="brief-text">{{ brief.brief_text }}</div>
+            <div style="display: flex; gap: 24px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 300px;">
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; margin-bottom: 8px;">Top 3 Priorities</div>
+                    <ol class="priorities">
+                        {% for p in brief.priorities %}
+                        <li>{{ p }}</li>
+                        {% endfor %}
+                    </ol>
+                </div>
+                {% if brief.red_flags %}
+                <div style="flex: 0 0 300px;">
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #ef4444; margin-bottom: 8px;">Red Flags</div>
+                    <ul class="priorities">
+                        {% for f in brief.red_flags %}
+                        <li class="red-flag">{{ f }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+            </div>
+            <div style="font-size: 10px; color: #475569; margin-top: 12px;">Generated {{ brief.created_at[:16] }}</div>
+            {% else %}
+            <div class="brief-text text-gray">Collecting data... Brief will generate after first full data pull.</div>
+            {% endif %}
+        </div>
+
+        <!-- ═══════════════════════════════════════ -->
+        <!-- REVENUE & CASH -->
+        <!-- ═══════════════════════════════════════ -->
+        <div class="section-header">Revenue & Cash</div>
+        <div class="grid grid-5">
             <div class="card metric">
-                <div class="value text-blue">{{ growth.current_clients }}</div>
+                <div class="value text-green">${{ "{:,.0f}".format(this_cash) }}</div>
+                <div class="label">Cash This Month</div>
+                <div class="target">Stripe</div>
+            </div>
+            <div class="card metric">
+                <div class="value text-gray">${{ "{:,.0f}".format(last_cash) }}</div>
+                <div class="label">Cash Last Month</div>
+            </div>
+            <div class="card metric">
+                <div class="value {{ color_mom(mom_pct) }}">{{ "{:+.0f}".format(mom_pct) }}%</div>
+                <div class="label">Month over Month</div>
+                <div class="target">Target: +10%</div>
+            </div>
+            <div class="card metric">
+                <div class="value text-blue">{{ this_month.get('active_clients', 0) }}</div>
                 <div class="label">Active Clients</div>
-                <div class="benchmark">Target: {{ growth.target_clients }}</div>
-                <div class="progress-bar">
-                    {% set pct = (growth.current_clients / growth.target_clients * 100) | int %}
-                    <div class="progress-fill fill-blue" style="width: {{ pct }}%"></div>
+                <div class="sub">
+                    {% if this_month.get('new_clients', 0) > 0 %}<span class="text-green">+{{ this_month.new_clients }} new</span>{% endif %}
+                    {% if this_month.get('churned_clients', 0) > 0 %} <span class="text-red">-{{ this_month.churned_clients }} churned</span>{% endif %}
                 </div>
             </div>
             <div class="card metric">
-                <div class="value {{ 'text-red' if growth.gap > 40 else 'text-amber' if growth.gap > 20 else 'text-green' }}">{{ growth.gap }}</div>
-                <div class="label">Clients to Add</div>
-                <div class="benchmark">{{ growth.months_remaining }} months left</div>
-            </div>
-            <div class="card metric">
-                <div class="value text-amber">{{ growth.new_per_month }}/mo</div>
-                <div class="label">New Clients Needed</div>
-                <div class="benchmark">inc. {{ growth.monthly_churn_count }} churn replacement</div>
-            </div>
-            <div class="card metric">
-                <div class="value text-blue">{{ growth.booked_calls_needed }}</div>
-                <div class="label">Calls/Month Needed</div>
-                <div class="benchmark">{{ growth.qualified_shows_needed }} qualified shows at 25% close</div>
+                <div class="value text-blue">{{ growth.gap }}</div>
+                <div class="label">Clients to $200K</div>
+                <div class="sub">{{ growth.new_per_month }}/mo needed ({{ growth.months_remaining }}mo left)</div>
+                <div class="progress-bar">
+                    {% set pct = (growth.current_clients / growth.target_clients * 100) | int if growth.target_clients > 0 else 0 %}
+                    <div class="progress-fill" style="width: {{ pct }}%; background: #3b82f6;"></div>
+                </div>
             </div>
         </div>
 
-        <!-- PIPELINE HEALTH -->
-        <div class="section-header">Pipeline Health (GHL)</div>
-        {% if pipeline_summary %}
+        <!-- Placeholder row -->
+        <div class="grid grid-3" style="margin-top: 8px;">
+            <div class="placeholder">Cash in Bank -- connect QuickBooks</div>
+            <div class="placeholder">Burn Rate -- connect QuickBooks</div>
+            <div class="placeholder">Meta Ad Spend -- connect Meta Ads</div>
+        </div>
+
+        <!-- ═══════════════════════════════════════ -->
+        <!-- ACQUISITION FUNNEL -->
+        <!-- ═══════════════════════════════════════ -->
+        <div class="section-header">Acquisition Funnel</div>
+
+        <!-- Cold Email Row -->
+        <div style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">Cold Email (Instantly)</div>
+        {% if email_data %}
+        <div class="grid grid-5">
+            <div class="card metric">
+                <div class="value text-blue">{{ "{:,}".format(email_totals.total_sent) }}</div>
+                <div class="label">Emails Sent</div>
+                <div class="target">{{ email_totals.campaigns }} campaigns</div>
+            </div>
+            <div class="card metric">
+                <div class="value {{ color_open_rate(email_totals.open_rate) }}">{{ "%.1f" | format(email_totals.open_rate) }}%</div>
+                <div class="label">Open Rate</div>
+                <div class="target">Target: 40-60%</div>
+            </div>
+            <div class="card metric">
+                <div class="value {{ color_reply_rate(email_totals.reply_rate) }}">{{ "%.1f" | format(email_totals.reply_rate) }}%</div>
+                <div class="label">Reply Rate</div>
+                <div class="target">Target: 3-8%</div>
+            </div>
+            <div class="card metric">
+                <div class="value {{ color_bounce_rate(email_totals.bounce_rate) }}">{{ "%.1f" | format(email_totals.bounce_rate) }}%</div>
+                <div class="label">Bounce Rate</div>
+                <div class="target">Target: &lt;3%</div>
+            </div>
+            <div class="card metric">
+                <div class="value text-blue">{{ email_totals.total_replied }}</div>
+                <div class="label">Total Replies</div>
+                <div class="target">= potential meetings</div>
+            </div>
+        </div>
+        {% else %}
+        <div class="placeholder" style="margin-bottom: 12px;">Cold email not connected. Add INSTANTLY_API_KEY to pull campaign data.</div>
+        {% endif %}
+
+        <!-- Sales Pipeline Row -->
+        <div style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin: 16px 0 8px;">Sales Pipeline (GHL)</div>
+        {% if active_pipelines %}
+        <div class="grid grid-4" style="margin-bottom: 12px;">
+            <div class="card metric">
+                <div class="value text-blue">{{ total_pipeline_opps }}</div>
+                <div class="label">Active Opportunities</div>
+            </div>
+            <div class="card metric">
+                <div class="value text-green">${{ "{:,.0f}".format(total_pipeline_value) }}</div>
+                <div class="label">Pipeline Value</div>
+            </div>
+            <div class="card metric">
+                <div class="value text-blue">{{ growth.booked_calls_needed }}</div>
+                <div class="label">Calls/Mo Needed</div>
+                <div class="target">{{ growth.qualified_shows_needed }} shows at 25% close</div>
+            </div>
+            <div class="card metric">
+                <div class="placeholder">CPA -- connect Meta Ads</div>
+            </div>
+        </div>
         <div class="grid grid-2">
-            {% for name, data in pipeline_summary.items() %}
+            {% for name, data in active_pipelines.items() %}
             <div class="card">
-                <h3>{{ name }}</h3>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
-                    <div><span style="font-size: 24px; font-weight: 800; color: #f8fafc;">{{ data.total_opps }}</span> <span style="color: #64748b; font-size: 13px;">opportunities</span></div>
-                    <div><span style="font-size: 24px; font-weight: 800; color: #22c55e;">${{ "{:,.0f}".format(data.total_value) }}</span> <span style="color: #64748b; font-size: 13px;">pipeline value</span></div>
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px;">
+                    <div style="font-size: 13px; font-weight: 600; color: #f8fafc;">{{ name }}</div>
+                    <div><span class="text-green" style="font-weight: 700;">${{ "{:,.0f}".format(data.total_value) }}</span> <span class="text-gray" style="font-size: 11px;">{{ data.total_opps }} opps</span></div>
                 </div>
                 {% set max_count = data.stages | map(attribute='opportunity_count') | max if data.stages else 1 %}
                 {% for stage in data.stages %}
+                {% if stage.opportunity_count > 0 %}
                 <div class="pipeline-stage">
-                    <div class="stage-name">{{ stage.stage_name }}</div>
+                    <div class="stage-name" title="{{ stage.stage_name }}">{{ stage.stage_name }}</div>
                     <div class="stage-bar">
                         {% set width = (stage.opportunity_count / max_count * 100) | int if max_count > 0 else 0 %}
-                        <div class="stage-fill fill-blue" style="width: {{ width }}%">
-                            {% if stage.opportunity_count > 0 %}{{ stage.opportunity_count }}{% endif %}
-                        </div>
+                        <div class="stage-fill" style="width: {{ width }}%; background: #3b82f6;">{{ stage.opportunity_count }}</div>
                     </div>
                     <div class="stage-count">{{ stage.opportunity_count }}</div>
                 </div>
+                {% endif %}
                 {% endfor %}
             </div>
             {% endfor %}
         </div>
         {% else %}
-        <div class="alert alert-amber">No pipeline data yet. Data will appear after first successful GHL pull. Click "Refresh Now" to trigger.</div>
-        {% endif %}
-
-        <!-- COLD EMAIL -->
-        <div class="section-header">Cold Email (Instantly)</div>
-        {% if email_data %}
-        <div class="grid grid-4">
+        <div class="grid grid-4" style="margin-bottom: 12px;">
             <div class="card metric">
-                <div class="value text-blue">{{ "{:,}".format(email_totals.total_sent) }}</div>
-                <div class="label">Emails Sent</div>
-                <div class="benchmark">{{ email_totals.campaigns }} campaigns</div>
+                <div class="value text-gray">0</div>
+                <div class="label">Active Opportunities</div>
             </div>
             <div class="card metric">
-                <div class="value {{ 'text-green' if email_totals.open_rate >= 40 else 'text-amber' if email_totals.open_rate >= 30 else 'text-red' }}">{{ "%.1f" | format(email_totals.open_rate) }}%</div>
-                <div class="label">Open Rate</div>
-                <div class="benchmark">Target: 40-60%</div>
+                <div class="value text-gray">$0</div>
+                <div class="label">Pipeline Value</div>
             </div>
             <div class="card metric">
-                <div class="value {{ 'text-green' if email_totals.reply_rate >= 3 else 'text-amber' if email_totals.reply_rate >= 2 else 'text-red' }}">{{ "%.1f" | format(email_totals.reply_rate) }}%</div>
-                <div class="label">Reply Rate</div>
-                <div class="benchmark">Target: 3-8%</div>
+                <div class="value text-amber">{{ growth.booked_calls_needed }}</div>
+                <div class="label">Calls/Mo Needed</div>
+                <div class="target">{{ growth.qualified_shows_needed }} shows at 25% close</div>
             </div>
             <div class="card metric">
-                <div class="value {{ 'text-green' if email_totals.bounce_rate < 3 else 'text-red' }}">{{ "%.1f" | format(email_totals.bounce_rate) }}%</div>
-                <div class="label">Bounce Rate</div>
-                <div class="benchmark">Target: <3%</div>
+                <div class="placeholder">CPA -- connect Meta Ads</div>
             </div>
         </div>
-        {% else %}
-        <div class="alert alert-amber">No cold email data yet. Configure INSTANTLY_API_KEY in environment variables.</div>
+        <div class="placeholder">No active pipeline opportunities in GHL. Opportunities will appear when leads enter the sales pipelines.</div>
         {% endif %}
 
-        <!-- CLIENT STATUS -->
-        <div class="section-header">Client Status</div>
+        <!-- Meta Ads Placeholder -->
+        <div style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin: 16px 0 8px;">Paid Ads (Meta)</div>
+        <div class="grid grid-4">
+            <div class="placeholder">Meta CPL -- coming soon</div>
+            <div class="placeholder">ROAS -- coming soon</div>
+            <div class="placeholder">Ad Spend -- coming soon</div>
+            <div class="placeholder">Creatives Active -- coming soon</div>
+        </div>
+
+        <!-- ═══════════════════════════════════════ -->
+        <!-- CLIENT HEALTH -->
+        <!-- ═══════════════════════════════════════ -->
+        <div class="section-header">Client Health</div>
         {% if clients %}
+        <div class="rag-pills">
+            <span class="rag-pill rag-pill-green">{{ rag_counts.green }} Green</span>
+            <span class="rag-pill rag-pill-amber">{{ rag_counts.amber }} Amber</span>
+            <span class="rag-pill rag-pill-red">{{ rag_counts.red }} Red</span>
+        </div>
         <div class="card">
             <table>
                 <thead>
@@ -204,11 +331,11 @@
                         <th>Show Rate</th>
                         <th>Close Rate</th>
                         <th>ROAS</th>
-                        <th>Last Updated</th>
+                        <th>Source</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for c in clients %}
+                    {% for c in clients | sort(attribute='rag', reverse=true) %}
                     <tr>
                         <td><span class="rag rag-{{ c.rag }}"></span>{{ c.client_name }}</td>
                         <td>
@@ -216,79 +343,104 @@
                             {% elif c.rag == 'amber' %}<span class="text-amber">Warning</span>
                             {% else %}<span class="text-red">At Risk</span>{% endif %}
                         </td>
-                        <td style="font-size: 12px; color: #94a3b8;">{{ c.constraint_pillar }}</td>
-                        <td>{{ "$%.0f" | format(c.cpl) if c.cpl else '--' }}</td>
-                        <td>{{ "%.0f%%" | format(c.show_rate * 100) if c.show_rate else '--' }}</td>
-                        <td>{{ "%.0f%%" | format(c.close_rate * 100) if c.close_rate else '--' }}</td>
-                        <td>{{ "%.1fx" | format(c.roas) if c.roas else '--' }}</td>
-                        <td style="font-size: 12px; color: #475569;">{{ c.last_updated[:10] if c.last_updated else '--' }}</td>
+                        <td style="font-size: 11px; color: #94a3b8;">{{ c.constraint_pillar }}</td>
+                        <td class="{{ color_cpl(c.cpl) }}">{{ "$%.0f" | format(c.cpl) if c.cpl else '--' }}{% if c.cpl %}<span class="text-gray" style="font-size: 10px;"> (&lt;$12)</span>{% endif %}</td>
+                        <td class="{{ color_show_rate(c.show_rate * 100 if c.show_rate else none) }}">{{ "%.0f%%" | format(c.show_rate * 100) if c.show_rate else '--' }}{% if c.show_rate %}<span class="text-gray" style="font-size: 10px;"> (75%+)</span>{% endif %}</td>
+                        <td class="{{ color_close_rate(c.close_rate * 100 if c.close_rate else none) }}">{{ "%.0f%%" | format(c.close_rate * 100) if c.close_rate else '--' }}{% if c.close_rate %}<span class="text-gray" style="font-size: 10px;"> (30%+)</span>{% endif %}</td>
+                        <td class="{{ color_roas(c.roas) }}">{{ "%.1fx" | format(c.roas) if c.roas else '--' }}{% if c.roas %}<span class="text-gray" style="font-size: 10px;"> (3x+)</span>{% endif %}</td>
+                        <td style="font-size: 10px; color: #475569;">{{ c.get('source', 'manual') }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
         {% else %}
-        <div class="alert alert-blue">No client data yet. Client metrics can be added manually or will populate when GHL client sub-accounts are connected.</div>
+        <div class="placeholder">No client data. Connect ClickUp (board ID: 901800417604) or add clients manually.</div>
         {% endif %}
 
-        <!-- BENCHMARKS REFERENCE -->
-        <div class="section-header">Cameron's Benchmarks</div>
+        <!-- ═══════════════════════════════════════ -->
+        <!-- TEAM ACTIVITY -->
+        <!-- ═══════════════════════════════════════ -->
+        <div class="section-header">Team Activity</div>
+        {% if team %}
         <div class="grid grid-2">
             <div class="card">
-                <h3>B2B (Your Acquisition)</h3>
+                <div style="font-size: 13px; font-weight: 600; color: #f8fafc; margin-bottom: 12px;">Tasks This Week</div>
                 <table>
-                    <thead><tr><th>Metric</th><th>Target</th><th>Red Flag</th></tr></thead>
-                    <tbody>
-                        {% for key, val in b2b_benchmarks.items() %}
+                    <thead>
                         <tr>
-                            <td>{{ key.replace('_', ' ').title() }}</td>
-                            <td class="text-green">{{ val.target }}</td>
-                            <td class="text-red">{{ val.red_flag }}</td>
+                            <th>Team Member</th>
+                            <th>Completed</th>
+                            <th>Overdue</th>
+                            <th>In Progress</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in team %}
+                        <tr>
+                            <td>{{ m.member_name }}</td>
+                            <td class="text-green">{{ m.tasks_completed_week }}</td>
+                            <td class="{{ 'text-red' if m.tasks_overdue > 0 else 'text-green' }}">{{ m.tasks_overdue }}</td>
+                            <td>{{ m.tasks_in_progress }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
             <div class="card">
-                <h3>B2C (Client Fulfillment)</h3>
-                <table>
-                    <thead><tr><th>Metric</th><th>Target</th><th>Red Flag</th></tr></thead>
-                    <tbody>
-                        {% for key, val in b2c_benchmarks.items() %}
-                        <tr>
-                            <td>{{ key.replace('_', ' ').title() }}</td>
-                            <td class="text-green">{{ val.target }}</td>
-                            <td class="text-red">{{ val.red_flag }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                <div style="font-size: 13px; font-weight: 600; color: #f8fafc; margin-bottom: 12px;">Team Summary</div>
+                <div class="metric" style="text-align: left;">
+                    <div><span class="text-green" style="font-size: 24px; font-weight: 800;">{{ team | sum(attribute='tasks_completed_week') }}</span> <span class="text-gray">tasks completed this week</span></div>
+                    <div style="margin-top: 12px;"><span class="{{ 'text-red' if team | sum(attribute='tasks_overdue') > 3 else 'text-amber' if team | sum(attribute='tasks_overdue') > 0 else 'text-green' }}" style="font-size: 24px; font-weight: 800;">{{ team | sum(attribute='tasks_overdue') }}</span> <span class="text-gray">overdue tasks</span></div>
+                </div>
+                <div class="placeholder" style="margin-top: 16px;">Communication pulse -- coming soon (client email/call tracking)</div>
+            </div>
+        </div>
+        {% else %}
+        <div class="placeholder">No team data. Connect ClickUp to track task completion and team activity.</div>
+        {% endif %}
+
+        <!-- ═══════════════════════════════════════ -->
+        <!-- DATA SOURCES -->
+        <!-- ═══════════════════════════════════════ -->
+        <div class="section-header">Data Sources</div>
+        <div class="card" style="padding: 16px;">
+            <div class="source-strip">
+                {% set source_map = {} %}
+                {% for s in sources %}
+                    {% set _ = source_map.update({s.source: s.status}) %}
+                {% endfor %}
+
+                {% for name in ['Stripe', 'GHL', 'Instantly', 'ClickUp'] %}
+                <div class="source-pill">
+                    {% set status = source_map.get(name, 'disconnected') %}
+                    <div class="source-dot {{ 'dot-green' if status == 'success' else 'dot-red' if status == 'error' else 'dot-gray' }}"></div>
+                    {{ name }}
+                    <span class="text-gray" style="font-size: 10px;">
+                        {% if status == 'success' %}connected
+                        {% elif status == 'error' %}error
+                        {% elif status == 'skipped' %}not configured
+                        {% else %}disconnected{% endif %}
+                    </span>
+                </div>
+                {% endfor %}
+
+                <!-- Future sources -->
+                {% for name in ['Meta Ads', 'QuickBooks'] %}
+                <div class="source-pill">
+                    <div class="source-dot dot-gray"></div>
+                    {{ name }}
+                    <span class="text-gray" style="font-size: 10px;">coming soon</span>
+                </div>
+                {% endfor %}
+
+                <span style="margin-left: auto; font-size: 11px; color: #475569;">
+                    Last refresh: {{ refreshes[0].created_at[:16] if refreshes else 'Never' }}
+                </span>
             </div>
         </div>
 
-        <!-- DATA STATUS -->
-        <div class="section-header">Data Sources</div>
-        <div class="card">
-            <table>
-                <thead><tr><th>Source</th><th>Status</th><th>Last Message</th><th>Time</th></tr></thead>
-                <tbody>
-                    {% for r in refreshes %}
-                    <tr>
-                        <td>{{ r.source }}</td>
-                        <td>
-                            {% if r.status == 'success' %}<span class="text-green">Connected</span>
-                            {% elif r.status == 'error' %}<span class="text-red">Error</span>
-                            {% else %}<span class="text-amber">{{ r.status }}</span>{% endif %}
-                        </td>
-                        <td style="font-size: 12px; color: #94a3b8;">{{ r.message[:80] }}</td>
-                        <td style="font-size: 12px; color: #475569;">{{ r.created_at[:16] }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-
-        <div style="text-align: center; padding: 32px; color: #334155; font-size: 12px;">
+        <div style="text-align: center; padding: 24px; color: #1e293b; font-size: 11px;">
             CSP CEO Dashboard -- Private & Confidential -- Auto-refreshes every 5 minutes
         </div>
     </div>
