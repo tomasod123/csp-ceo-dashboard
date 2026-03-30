@@ -39,40 +39,63 @@ async def collect_stripe():
     now = datetime.utcnow()
     this_month_start = now.replace(day=1, hour=0, minute=0, second=0)
     last_month_start = (this_month_start - timedelta(days=1)).replace(day=1)
+    # Use 60-day window for "active" to handle upfront payments
+    active_window_start = now - timedelta(days=60)
 
     ts_this = int(this_month_start.timestamp())
     ts_last = int(last_month_start.timestamp())
+    ts_active = int(active_window_start.timestamp())
     ts_now = int(time.time())
 
     auth = (api_key, "")
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            # Paginate all charges this month
+            # Paginate charges for different windows
             this_charges = await _stripe_paginate_charges(client, auth, ts_this, ts_now)
             last_charges = await _stripe_paginate_charges(client, auth, ts_last, ts_this)
+            # 60-day window for active client detection (catches upfront payments)
+            active_charges = await _stripe_paginate_charges(client, auth, ts_active, ts_now)
 
-            # Calculate
+            # Cash collected is strictly this calendar month
             this_total = sum(c["amount"] for c in this_charges if c.get("paid") and not c.get("refunded")) / 100
             last_total = sum(c["amount"] for c in last_charges if c.get("paid") and not c.get("refunded")) / 100
 
-            this_clients = set(c.get("billing_details", {}).get("name", "Unknown")
-                               for c in this_charges if c.get("paid") and not c.get("refunded")
-                               and c.get("billing_details", {}).get("name"))
+            # Active clients = anyone who paid in last 60 days (handles upfront payments)
+            active_clients = set(c.get("billing_details", {}).get("name", "Unknown")
+                                 for c in active_charges if c.get("paid") and not c.get("refunded")
+                                 and c.get("billing_details", {}).get("name"))
+
+            this_month_clients = set(c.get("billing_details", {}).get("name", "Unknown")
+                                     for c in this_charges if c.get("paid") and not c.get("refunded")
+                                     and c.get("billing_details", {}).get("name"))
             last_clients = set(c.get("billing_details", {}).get("name", "Unknown")
                                for c in last_charges if c.get("paid") and not c.get("refunded")
                                and c.get("billing_details", {}).get("name"))
 
-            new_clients = this_clients - last_clients
-            churned = last_clients - this_clients
+            # New = paid this month but not in prior 60-day window before this month
+            prior_window = await _stripe_paginate_charges(client, auth, ts_active, ts_this)
+            prior_clients = set(c.get("billing_details", {}).get("name", "Unknown")
+                                for c in prior_window if c.get("paid") and not c.get("refunded")
+                                and c.get("billing_details", {}).get("name"))
+            new_clients = this_month_clients - prior_clients
+
+            # Churned = paid in 60-90 day window but NOT in last 60 days
+            old_window_start = now - timedelta(days=90)
+            ts_old = int(old_window_start.timestamp())
+            old_charges = await _stripe_paginate_charges(client, auth, ts_old, ts_active)
+            old_clients = set(c.get("billing_details", {}).get("name", "Unknown")
+                              for c in old_charges if c.get("paid") and not c.get("refunded")
+                              and c.get("billing_details", {}).get("name"))
+            churned = old_clients - active_clients
 
             this_month_str = now.strftime("%Y-%m")
             last_month_str = last_month_start.strftime("%Y-%m")
 
             save_revenue(
-                this_month_str, this_total, len(this_clients),
+                this_month_str, this_total, len(active_clients),
                 len(new_clients), len(churned),
-                sorted(this_clients), sorted(new_clients), sorted(churned)
+                sorted(active_clients), sorted(new_clients), sorted(churned)
             )
             save_revenue(
                 last_month_str, last_total, len(last_clients),
@@ -80,7 +103,7 @@ async def collect_stripe():
             )
 
             log_refresh("Stripe", "success",
-                        f"${this_total:,.0f} this month, {len(this_clients)} clients, "
+                        f"${this_total:,.0f} this month, {len(active_clients)} active (60d), "
                         f"{len(new_clients)} new, {len(churned)} churned")
 
     except Exception as e:

@@ -207,3 +207,16 @@ async def manual_refresh(request: Request):
         return RedirectResponse(url="/login")
     await collect_all()
     return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/api/chat")
+async def chat_endpoint(request: Request):
+    if not verify_session(request):
+        return {"error": "Not authenticated"}
+    from app.chat import chat_with_cameron
+    body = await request.json()
+    question = body.get("question", "")
+    if not question:
+        return {"error": "No question provided"}
+    response = await chat_with_cameron(question)
+    return {"response": response}
