@@ -61,7 +61,7 @@ def verify_session(request: Request) -> bool:
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request=request, name="login.html", context={"error": None})
 
 
 @app.post("/login")
@@ -71,7 +71,7 @@ async def login_submit(request: Request, password: str = Form(...)):
         token = serializer.dumps("authenticated")
         response.set_cookie(COOKIE_NAME, token, max_age=COOKIE_MAX_AGE, httponly=True, samesite="lax")
         return response
-    return templates.TemplateResponse("login.html", {"request": request, "error": "Wrong password"})
+    return templates.TemplateResponse(request=request, name="login.html", context={"error": "Wrong password"})
 
 
 @app.get("/logout")
@@ -131,8 +131,7 @@ async def dashboard(request: Request):
         c["constraint_pillar"] = pillar
         c["constraint_detail"] = detail
 
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request,
+    return templates.TemplateResponse(request=request, name="dashboard.html", context={
         "pipeline_summary": pipeline_summary,
         "pipeline_uk": pipeline_uk,
         "pipeline_legacy": pipeline_legacy,
